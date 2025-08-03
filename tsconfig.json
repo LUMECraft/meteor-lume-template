@@ -1,0 +1,37 @@
+{
+	// "extends": "./node_modules/@lume/cli/config/ts.config.json",
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"declaration": false,
+		"declarationMap": false,
+		"sourceMap": true,
+		"target": "ES2022",
+		"module": "ES2022",
+		"moduleResolution": "Node",
+		"lib": ["DOM", "ES2022"],
+		"verbatimModuleSyntax": true,
+		"skipLibCheck": true,
+
+		"strict": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+
+		// disable global types, use import syntax instead of globals
+		"types": [],
+
+		// "preserveSymlinks": true, // makes no difference for meteor types for me.
+		"paths": {
+			"meteor/*": [
+				//
+				"./node_modules/@types/meteor/*",
+
+				// This is from zodern:types. It appears to not do anything
+				// though??? Plus missing packages???
+				"./.meteor/local/types/packages.d.ts"
+			]
+		}
+	},
+
+	"include": ["./**/*.ts"]
+}

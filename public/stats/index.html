@@ -1,0 +1,67 @@
+<html>
+	<head>
+		<title>Stats</title>
+
+		<base href="/stats/index.html" />
+
+		<script src="../write-html.js" href="/"></script>
+	</head>
+
+	<body>
+		<style>
+			/* Hide the #root we're not using from the imported HTML. */
+			#root:first-of-type {
+				display: none;
+			}
+
+			body {
+				overflow: auto;
+				pointer-events: auto;
+			}
+
+			login-ui {
+				pointer-events: auto;
+				display: block;
+				position: absolute;
+				top: 10px;
+				right: 10px;
+				z-index: 2;
+			}
+
+			#statsUI {
+				padding: 20px;
+				overflow-x: auto;
+			}
+		</style>
+
+		<login-ui
+			custom-style="
+				#loginButtons a.login-link-text {
+					color: black;
+
+					:host-context([data-theme='dark']) & {
+						color: white;
+					}
+				}
+			"
+		></login-ui>
+
+		<theme-switch></theme-switch>
+		<style>
+			theme-switch {
+				position: absolute;
+				top: 30px;
+				right: 10px;
+				z-index: 1;
+
+				--theme-switch-icon-color: rgb(29, 29, 29);
+
+				[data-theme='dark'] & {
+					--theme-switch-icon-color: rgb(219, 219, 219);
+				}
+			}
+		</style>
+
+		<script type="module" src="./stats.js"></script>
+	</body>
+</html>

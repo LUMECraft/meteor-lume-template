@@ -1,0 +1,47 @@
+{
+	"name": "meteor-lume-template",
+	"license": "MIT",
+	"// TODO: we want to use type:module, but Meteor code is still CommonJS. For now we set type:commonjs, then import our es modules from server/entry.js on the server": "",
+	"type": "commonjs",
+	"scripts": {
+		"start": "npm run dev",
+		"build": "npm run _link && tsc",
+		"build:clean": "npm run clean && npm run build",
+		"dev": "npm run build:clean && concurrently --kill-others 'tsc --watch' 'npm run _meteor'",
+		"_link": "symlink-dir imports public/imports",
+		"_meteor": "meteor --exclude-archs web.browser.legacy --no-lint",
+		"clean": "npm run _clean:unix || npm run --script-shell=pwsh _clean:windows",
+		"_clean:unix": "rm -rf `find client -name '*.js*'` && rm -rf `find public -name '*.js*'` && rm -rf `find server -name '*.js*'` && rm -rf `find imports -name '*.js*'`",
+		"_clean:windows": "Get-ChildItem -r -i client | Where{$_.Name -Match '*.\\.js*.'} | rm -r -fo && Get-ChildItem -r -i public | Where{$_.Name -Match '*.\\.js*.'} | rm -r -fo && Get-ChildItem -r -i server | Where{$_.Name -Match '*.\\.js*.'} | rm -r -fo",
+		"publish": "...TODO...",
+		"typecheck": "lume typecheck",
+		"typecheck:watch": "lume typecheckWatch"
+	},
+	"overrides": {
+		"@lume/element": "$@lume/element"
+	},
+	"dependencies": {
+		"@babel/runtime": "^7.15.4",
+		"@lume/element": "^0.16.1",
+		"@tweenjs/tween.js": "^18.6.4",
+		"@types/meteor": "^2.9.8",
+		"@types/three": "^0.174.0",
+		"jquery": "^3.7.1",
+		"lume": "^0.3.0-alpha.46",
+		"meteor-node-stubs": "^1.0.0",
+		"solid-js": "^1.9.0",
+		"symlink-dir": "^6.0.5",
+		"three": "^0.174.0",
+		"typescript": "^5.0.0"
+	},
+	"devDependencies": {
+		"@lume/cli": "^0.15.0",
+		"concurrently": "^9.1.2",
+		"prettier": "3.5.3"
+	},
+	"meteor": {
+		"mainModule": {
+			"server": "server/entry.js"
+		}
+	}
+}

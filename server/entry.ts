@@ -1,0 +1,203 @@
+import {Meteor} from 'meteor/meteor'
+import '../imports/collections/index.js'
+import {WebApp} from 'meteor/webapp'
+import {Accounts} from 'meteor/accounts-base'
+import * as fs from 'fs'
+import * as path from 'path'
+import type {ServerResponse} from 'http'
+
+// @ts-expect-error missing type (TODO update away from @types/meteor? Ask
+// Meteor's AI "How to set up TypeScript", there's some good docs.)
+WebApp.addHtmlAttributeHook(() => ({lang: 'en', prefix: 'og: http://ogp.me/ns#'}))
+
+// TODO update this with the app domain.
+const TLD = 'example.com'
+
+const appOrigin = (sub?: string) => `https://${sub ? sub + '.' : ''}${TLD}`
+
+const localhost = (port: string | number) => [
+	`http://localhost:${port}`,
+	`http://127.0.0.1:${port}`,
+	`http://0.0.0.0:${port}`,
+]
+
+const allowedOrigins = [
+	appOrigin(),
+	appOrigin('docs'),
+
+	// the app on localhost
+	...localhost(3000),
+]
+
+// Allow only certain domains to access content from the server (for example
+// domains that we have not authorized will not be able to authenticate using
+// the app domain via iframe).
+WebApp.rawHandlers.use(
+	/*'/public',*/
+	async function (req, res, next) {
+		///////////////////////////////////////////////////////////////////////////
+		// CORS handling to disallow foreign origins from embedding the app domain,
+		// hence forbidding them from using an iframe to get a user's auth
+		// credentials.
+
+		// Respond to preflight requests.
+		// TODO Do we need this (if we're only on GET)?
+		// if (req.method === 'OPTIONS') {
+		// 	res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
+		//  // Meteor is on GET only by default, with API communication over
+		//  // WebSockets, we're currently not handling anything other than GET.c
+		// 	res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+		// 	res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+		// 	res.setHeader('Access-Control-Max-Age', '3600')
+		// 	res.writeHead(200)
+		// 	res.end()
+		// 	return
+		// }
+
+		// Check if the request is from a valid origin, and if so allow it.
+		//
+		// If there is no origin header, it means its a same-origin GET or HEAD
+		// request in standard web browsers, otherwise it is another type of
+		// same-origin request, or a cross-origin request (cross-origin requests
+		// from non-hacked browsers always have the origin header). Setting
+		// access control is not a security feature, but more of a convenience
+		// for the browser to block resources from being usable on other
+		// origins, so always use authentication. For non-browser clients such
+		// as hacker servers that can easily set headers to whatever they want,
+		// this will not prevent them from accessing the site, and user 2-factor
+		// is recommended (only users savy enough to check the domain name in
+		// their non-hacked address bar before logging in will be safe
+		// otherwise).
+		// (https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin#description)
+		if (!req.headers.origin || allowedOrigins.includes(req.headers.origin)) {
+			res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
+			res.setHeader('Vary', 'Origin')
+
+			// TODO maybe we only need to set this for documents (not scripts,
+			// images, etc).
+			res.setHeader(
+				'Content-Security-Policy',
+				`frame-ancestors 'self' ${Meteor.isDevelopment ? localhost('*').join(' ') : appOrigin('*')}`,
+			)
+		} else return getCoffee(res)
+
+		if (req.url !== req.originalUrl)
+			console.error('url and originalUrl do not match, needs handling:', req.url, req.originalUrl)
+
+		///////////////////////////////////////////////////////////////////////////
+		// Implement custom request path handling such that a path like `/foo`
+		// will serve `/foo.html`. This makes it possible to put `app.html` in
+		// the `public/` folder, for example, and access it as `<appOrigin>/app`
+		// without using a special backend router, only the existence of HTML
+		// files.
+
+		const url = new URL(appOrigin() + req.url)
+
+		// Continue as usual for / (Meteor serves that after building client/entry.html).
+		if (url.pathname === '/') return next()
+
+		// Redirect /foo/ to /foo (and /foo will render /foo.html or /foo/index.html if one of those exists)
+		if (url.pathname.endsWith('/')) return permRedirect(res, url.pathname.replace(/\/$/g, ''))
+
+		// Treat '/foo/bar' and '/foo/bar/' as 'foo/bar', '/foo' and '/foo/' as 'foo', and '/' as ''.
+		let pathname = url.pathname
+		pathname = pathname.replace(/^\//g, '')
+		pathname = pathname.replace(/\/$/g, '')
+		const pathParts = pathname.split('/')
+
+		// Continue as usual for files with extensions (Meteor serves those). We're only checking
+		// extensionless extensionless paths like /foo
+		if (pathParts[pathParts.length - 1].includes('.')) return next()
+
+		// Location in the Meteor-specific build output (not relative to the
+		// entry file's location in source code, but relative to
+		// ./.meteor/local/build/programs/server/ from the project root.).
+		const publicDir = path.resolve('..', 'web.browser', 'app')
+
+		let searchPath = []
+		for (const part of pathParts) {
+			searchPath.push(part)
+
+			const fullPath = path.resolve(publicDir, ...searchPath)
+			const filePaths = [fullPath + '.html', fullPath + '/index.html']
+
+			for (const filePath of filePaths) {
+				let exists = false
+
+				try {
+					exists = (await fs.promises.stat(filePath)).isFile()
+				} catch (e) {}
+
+				if (exists) {
+					try {
+						return sendOk(res, await fs.promises.readFile(filePath))
+					} catch (e) {
+						return failure(res, 'Failed to read and serve file: ', filePath)
+					}
+				}
+			}
+		}
+
+		// Continue as usual if for /foo we didn't find /foo.html or /foo/index.html
+		return next()
+	},
+)
+
+function getCoffee(res: ServerResponse) {
+	res.statusCode = 418 // see https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/418
+	res.write('go get some coffee')
+	res.end()
+}
+
+function failure(res: ServerResponse, ...msg: any[]) {
+	console.error('Failure: ', ...msg)
+	res.statusCode = 500
+	res.write('Failure.')
+	res.end()
+}
+
+function sendOk(res: ServerResponse, body: any) {
+	res.statusCode = 200
+	res.write(body)
+	res.end()
+}
+
+function permRedirect(res: ServerResponse, newPath: string) {
+	res.statusCode = 301
+	res.writeHead(301, {location: newPath})
+	res.end()
+}
+
+//// Set up admins. ////////////////////////////////
+// This is in server code only so that people won't see the list of emails on
+// the client.
+
+// TODO define admins.
+const admins = ['joe@example.com' /* , ... */]
+
+Accounts.findUserByEmailTmp = Accounts.findUserByEmail as any
+
+// If a user signs up with a known admin email, make them an admin.
+Accounts.onCreateUser((options, user) => {
+	const isAdmin = user.emails?.some(email => admins.includes(email.address.toLowerCase()))
+
+	user.profile = {...user.profile, ...options.profile, isAdmin}
+
+	return user
+})
+
+const promises = [] as Promise<any>[]
+
+// Make all existing users with a known admin email admins.
+for (const email of admins) {
+	promises.push(
+		Accounts.findUserByEmailTmp(email).then(user => {
+			if (user) return Meteor.users.updateAsync({_id: user._id}, {$set: {profile: {...user.profile, isAdmin: true}}})
+		}),
+	)
+}
+
+await Promise.all(promises)
+
+// TODO configure default field selector.
+// Accounts.config({ defaultFieldSelector: { includeThisOne: 1, excludeThisOne: 0 } })
